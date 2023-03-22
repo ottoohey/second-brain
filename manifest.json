@@ -1,11 +1,11 @@
 {
-	"id": "obsidian-sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "obsidian-second-brain",
+	"name": "Second Brain",
+	"version": "0.1",
 	"minAppVersion": "0.15.0",
-	"description": "This is a sample plugin for Obsidian. This plugin demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
-	"isDesktopOnly": false
+	"description": "This is a plugin for Obsidian to generate a custom OpenAI model based on your knowledge base.",
+	"author": "Oliver Toohey",
+	"authorUrl": "https://www.olivertoohey.com",
+	"fundingUrl": "",
+	"isDesktopOnly": true
 }
