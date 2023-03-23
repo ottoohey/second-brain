@@ -1,8 +1,6 @@
 import {
 	App,
-	Editor,
 	FileStats,
-	MarkdownView,
 	Modal,
 	Notice,
 	Plugin,
@@ -21,6 +19,11 @@ const DEFAULT_SETTINGS: SecondBrainSettings = {
 	unixLastUpdated: 0,
 	apiKey: "",
 };
+
+interface TrainingData {
+	prompt: string;
+	completion: string;
+}
 
 export default class SecondBrain extends Plugin {
 	settings: SecondBrainSettings;
@@ -41,7 +44,15 @@ export default class SecondBrain extends Plugin {
 
 				const splitContent = this.splitContent(combinedContent);
 
-				this.getTrainingData(splitContent);
+				const trainingData = await this.getTrainingData(splitContent);
+
+				// this.modifyTrainingDataFile(trainingData);
+
+				const jsonData: TrainingData[] = JSON.parse(trainingData);
+
+				const markdownTable = this.createMarkdownTable(jsonData);
+
+				this.modifyTrainingDataFile(markdownTable);
 
 				new Notice("Change the notice!");
 			}
@@ -61,16 +72,6 @@ export default class SecondBrain extends Plugin {
 					this.settings.apiKey = result;
 					console.log(this.settings.apiKey);
 				}).open();
-			},
-		});
-
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: "sample-editor-command",
-			name: "Sample editor command",
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection("Sample Editor Command");
 			},
 		});
 
@@ -156,7 +157,6 @@ export default class SecondBrain extends Plugin {
 		let combinedContent = "";
 
 		files.forEach(file => {
-			console.log(file.getContent);
 			combinedContent += file.getContent;
 		});
 
@@ -197,11 +197,12 @@ export default class SecondBrain extends Plugin {
 					messages: [
 						{
 							role: "system",
-							content: "Hi, I want you to pretend you are a data scientist tasked with training ChatGPT with some custom data. The idea is to allow the new AI model to look at a users personal knowledge base and act as an assistance for anyone who wants to ask questions about it. I am going to paste below an example of one of the documents and I would like you to create a JSONL document with a list of prompt and ideal completion examples based of the contents of the document."
+							content: "Hi, I want you to pretend you are a data scientist tasked with training ChatGPT with some custom data. The idea is to allow the new AI model to look at a users personal knowledge base and act as an assistance for anyone who wants to ask questions about it. I am going to paste below an example of one of the documents and I would like you to create a JSON document with a list of prompt and ideal completion examples based of the contents of the document. I only want the pairs of prompts and completions in a single array, like this: [{prompt: 'first prompt', completion: 'first completion'}, {prompt: 'second prompt', completion: 'second completion'}]. Please do not include anything but the JSON Document in your response"
 						},
 						{
 							role: "user",
-							content: splitArray[0]
+							// content: splitArray[0]
+							content: "ChatGPT 3.5 incorporated Reinforcment Learning from Human Feedback (RLHF), which used feedback to improve the models accuracy, improve answers and reduce harmful responses. Text-to-code is becoming more prevelant with GitHub's Copilot, which assists user programming with autocomplete. There is also DeepMind's AlphaCode, which generates code based on a written description. There are multiple other applications of AI which are all being worked on right now, such as text to image, text to 3D, 2D to 3D and voice simulation."
 						}
 					]
 				}),
@@ -211,6 +212,26 @@ export default class SecondBrain extends Plugin {
 			.then((data) => data);
 
 		console.log(response);
+		return response.choices[0].message.content
+	}
+
+	modifyTrainingDataFile(trainingData: string) {
+		const files = app.vault
+			.getFiles()
+			.filter((file) => file.name === "Test.md");
+
+		app.vault.append(files[0], "### " + this.settings.lastUpdated + '\n');
+		app.vault.append(files[0], trainingData + '\n\n');
+	}
+
+	createMarkdownTable(data: TrainingData[]): string {
+		let markdownTable = `|Prompt|Completion|\n|---|---|\n`;
+
+		data.forEach(({ prompt, completion }) => {
+			markdownTable += `|${prompt}|${completion}|\n`;
+		});
+
+		return markdownTable;
 	}
 }
 
