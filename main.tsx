@@ -10,7 +10,6 @@ import {
 	Setting,
 } from "obsidian";
 
-// Remember to rename these classes and interfaces!
 interface SecondBrainSettings {
 	lastUpdated: string;
 	unixLastUpdated: number;
@@ -38,7 +37,11 @@ export default class SecondBrain extends Plugin {
 
 				const files: ObsidianFile[] = await this.checkModifiedFiles();
 
-				this.combineFiles(files);
+				const combinedContent = this.combineFiles(files);
+
+				const splitContent = this.splitContent(combinedContent);
+
+				this.getTrainingData(splitContent);
 
 				new Notice("Change the notice!");
 			}
@@ -134,10 +137,10 @@ export default class SecondBrain extends Plugin {
 				file.tags.contains("#second-brain") &&
 				file.timeData.mtime > this.settings.unixLastUpdated
 			) {
-				console.log("New data, updating: " + file.path);
+				// console.log("New data, updating: " + file.path);
 				updatedFiles.push(new ObsidianFile(file.path, file.content, file.tags, file.timeData));
 			} else {
-				console.log("Removed: " + file.path);
+				// console.log("Removed: " + file.path);
 			}
 		});
 
@@ -153,10 +156,61 @@ export default class SecondBrain extends Plugin {
 		let combinedContent = "";
 
 		files.forEach(file => {
+			console.log(file.getContent);
 			combinedContent += file.getContent;
 		});
 
-		console.log(combinedContent);
+		return combinedContent;
+	}
+
+	splitContent(combinedContent: string) {
+		const split = combinedContent.split('\n\n')
+		const splitArray: string[] = [""];
+		let lastIndex = splitArray.length - 1;
+
+		// if last string in array + paragraph length < 16000, add paragraph to last array string
+		// else, create new string in array and add paragraph
+		split.forEach(function (item) {
+			if (splitArray[lastIndex].length + item.length < 16000) {
+				splitArray[lastIndex] += item;
+			} else {
+				splitArray.push(item);
+				lastIndex += 1;
+			}
+		})
+
+		return splitArray;
+
+	}
+
+	async getTrainingData(splitArray: string[]) {
+		const response = await fetch(
+			'https://api.openai.com/v1/chat/completions',
+			{
+				method: 'POST',
+				headers: {
+					Authorization: this.settings.apiKey,
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					model: "gpt-3.5-turbo",
+					messages: [
+						{
+							role: "system",
+							content: "Hi, I want you to pretend you are a data scientist tasked with training ChatGPT with some custom data. The idea is to allow the new AI model to look at a users personal knowledge base and act as an assistance for anyone who wants to ask questions about it. I am going to paste below an example of one of the documents and I would like you to create a JSONL document with a list of prompt and ideal completion examples based of the contents of the document."
+						},
+						{
+							role: "user",
+							content: splitArray[0]
+						}
+					]
+				}),
+			}
+		)
+			.then((response) => response.json())
+			.then((data) => data);
+
+		console.log(response);
 	}
 }
 
