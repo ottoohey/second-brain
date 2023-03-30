@@ -8,6 +8,8 @@ import {
 	Setting,
 } from "obsidian";
 
+import { ChromaClient, OpenAIEmbeddingFunction } from 'chromadb';
+
 interface SecondBrainSettings {
 	lastUpdated: string;
 	unixLastUpdated: number;
@@ -30,35 +32,123 @@ export default class SecondBrain extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-
-		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon(
 			"star",
 			"Second Brain",
 			async (evt: MouseEvent) => {
+
+				const chromaClient = new ChromaClient();
+				const embedder = new OpenAIEmbeddingFunction("key");
+
+				await chromaClient.createCollection("my_collection", {}, embedder);
+
+				// const collection = await chromaClient.getCollection("my_collection", embedder);
+
+				// 	undefined,
+				// 	["ark invest", "inteview questions"]
+				// )
+
+				// const results = await collection.query(
+				// 	undefined,
+				// 	2,
+				// 	undefined,
+				// 	['Five innovation platforms']
+				// );
+
+				// console.log("results: " + results);
+
+				new Notice("ChromaDB Functionality");
+			}
+		);
+
+		// Perform additional things with the ribbon
+		ribbonIconEl.addClass("my-plugin-ribbon-class");
+
+		// This creates an icon in the left ribbon.
+		const circleIconEl = this.addRibbonIcon(
+			"circle",
+			"Second Brain",
+			async (evt: MouseEvent) => {
 				// Called when the user clicks the icon.
 
+				// Get files that have been modified since last fine tune
 				const files: ObsidianFile[] = await this.checkModifiedFiles();
 
-				const combinedContent = this.combineFiles(files);
+				// // Combine files
+				// const combinedContent = this.combineFiles(files);
 
-				const splitContent = this.splitContent(combinedContent);
+				// // Split into 4000 token chunks
+				// const splitContent = this.splitContent(combinedContent);
 
-				const trainingData = await this.getTrainingData(splitContent);
+				// // Get ChatGPT to generate training data
+				// const trainingData = await this.getTrainingData(splitContent);
 
-				// this.modifyTrainingDataFile(trainingData);
+				// // Get JSON of training data
+				// const jsonData: TrainingData[] = JSON.parse(trainingData);
 
-				const jsonData: TrainingData[] = JSON.parse(trainingData);
+				// // Create markdown table so human readable
+				// const markdownTable = this.createMarkdownTable(jsonData);
 
-				const markdownTable = this.createMarkdownTable(jsonData);
+				// // Add markdown table to training data file for user to inspect
+				// this.modifyTrainingDataFile(markdownTable);
 
-				this.modifyTrainingDataFile(markdownTable);
+				// // create JSONL doc
+				// const jsonlDoc = this.markdownToJSONL(markdownTable);
+
+				// files.forEach((file) => {
+				// 	const split = file.content.split(/\n\n+/);
+				// 	console.log(split);
+				// });
+
+				const split = files[0].content.split(/\n\n+/);
+
+				const ids = [];
+				const embeddingDocs = [];
+				const metadata = [];
+				const documents = [];
+
+				const chromaClient = new ChromaClient();
+				const embedder = new OpenAIEmbeddingFunction("sk-")
+
+				// const embedding = await embedder.generate([split[0]]);
+				// embeddings.push(embedding);
+
+				let index = 0;
+
+				for (const paragraph of split) {
+
+					ids.push(index.toString());
+
+					// const embedding = await embedder.generate([paragraph]);
+					embeddingDocs.push(paragraph);
+
+					metadata.push({ "paragraph": index });
+
+					documents.push("Macquarie Interview " + index);
+
+					index++;
+				}
+
+				const embeddings = await embedder.generate(embeddingDocs);
+
+				console.log(ids);
+				console.log(embeddings);
+				console.log(metadata);
+				console.log(documents);
+
+				const collection = await chromaClient.getCollection("my_collection", embedder);
+				await collection.add(
+					ids,
+					embeddings,
+					metadata,
+					documents
+				)
 
 				new Notice("Change the notice!");
 			}
 		);
 		// Perform additional things with the ribbon
-		ribbonIconEl.addClass("my-plugin-ribbon-class");
+		circleIconEl.addClass("my-plugin-ribbon-class");
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
@@ -72,6 +162,43 @@ export default class SecondBrain extends Plugin {
 					this.settings.apiKey = result;
 					console.log(this.settings.apiKey);
 				}).open();
+			},
+		});
+
+		this.addCommand({
+			id: "open-modal-reset-chroma",
+			name: "Reset Chroma",
+			callback: async () => {
+				const chromaClient = new ChromaClient();
+				await chromaClient.reset();
+			},
+		});
+
+		this.addCommand({
+			id: "open-modal-list-chroma-collections",
+			name: "List Chroma Collections",
+			callback: async () => {
+				const chromaClient = new ChromaClient();
+				const collections = await chromaClient.listCollections();
+				console.log(collections);
+			},
+		});
+
+		this.addCommand({
+			id: "open-modal-query-chroma-collection",
+			name: "Query Chroma Collection",
+			callback: async () => {
+				const chromaClient = new ChromaClient();
+				const embedder = new OpenAIEmbeddingFunction("sk-")
+				const collection = await chromaClient.getCollection("my_collection", embedder);
+				const results = await collection.query(
+					undefined, // query_embeddings
+					1, // n_results
+					undefined,
+					// { "metadata_field": "is_equal_to_this" }, // where
+					["When have you experienced conflict at work"], // query_text
+				)
+				console.log(results);
 			},
 		});
 
@@ -232,6 +359,26 @@ export default class SecondBrain extends Plugin {
 		});
 
 		return markdownTable;
+	}
+
+	markdownToJSONL(markdown: string): string {
+		const rows = markdown.split('\n').map(row => row.trim());
+		rows.pop();
+
+		const headers = rows.splice(0, 2).shift().split('|').slice(1, -1).map(header => header.trim());
+
+		const jsonlArray = rows.map(row => {
+			const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
+			const jsonlObject = {};
+			headers.forEach((header, index) => {
+				jsonlObject[header.toLowerCase()] = cells[index];
+			});
+			return jsonlObject;
+		});
+
+		const jsonL = jsonlArray.map(x => JSON.stringify(x)).join('\n')
+
+		return jsonL;
 	}
 }
 
