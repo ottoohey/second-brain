@@ -38,24 +38,9 @@ export default class SecondBrain extends Plugin {
 			async (evt: MouseEvent) => {
 
 				const chromaClient = new ChromaClient();
-				const embedder = new OpenAIEmbeddingFunction("key");
+				const embedder = new OpenAIEmbeddingFunction(this.settings.apiKey);
 
 				await chromaClient.createCollection("my_collection", {}, embedder);
-
-				// const collection = await chromaClient.getCollection("my_collection", embedder);
-
-				// 	undefined,
-				// 	["ark invest", "inteview questions"]
-				// )
-
-				// const results = await collection.query(
-				// 	undefined,
-				// 	2,
-				// 	undefined,
-				// 	['Five innovation platforms']
-				// );
-
-				// console.log("results: " + results);
 
 				new Notice("ChromaDB Functionality");
 			}
@@ -72,7 +57,7 @@ export default class SecondBrain extends Plugin {
 				// Called when the user clicks the icon.
 
 				// Get files that have been modified since last fine tune
-				const files: ObsidianFile[] = await this.checkModifiedFiles();
+				const files: ObsidianFile[] = await this.getFiles(true);
 
 				// // Combine files
 				// const combinedContent = this.combineFiles(files);
@@ -95,12 +80,17 @@ export default class SecondBrain extends Plugin {
 				// // create JSONL doc
 				// const jsonlDoc = this.markdownToJSONL(markdownTable);
 
-				// files.forEach((file) => {
-				// 	const split = file.content.split(/\n\n+/);
-				// 	console.log(split);
-				// });
+				const splitContents: SplitObsidianFile[] = [];
 
-				const split = files[0].content.split(/\n\n+/);
+				files.forEach((file) => {
+					const split = file.content.split(/\n\n+/);
+
+					split.forEach((paragraph, index) => {
+						const splitContent: SplitObsidianFile = new SplitObsidianFile(file.path, paragraph, index);
+						splitContents.push(splitContent);
+					})
+				});
+
 
 				const ids = [];
 				const embeddingDocs = [];
@@ -108,23 +98,20 @@ export default class SecondBrain extends Plugin {
 				const documents = [];
 
 				const chromaClient = new ChromaClient();
-				const embedder = new OpenAIEmbeddingFunction("sk-")
-
-				// const embedding = await embedder.generate([split[0]]);
-				// embeddings.push(embedding);
+				const embedder = new OpenAIEmbeddingFunction("API_KEY");
 
 				let index = 0;
 
-				for (const paragraph of split) {
+				for (const item of splitContents) {
 
 					ids.push(index.toString());
 
 					// const embedding = await embedder.generate([paragraph]);
-					embeddingDocs.push(paragraph);
+					embeddingDocs.push(item.content);
 
-					metadata.push({ "paragraph": index });
+					metadata.push({ "paragraph": item.paragraph });
 
-					documents.push("Macquarie Interview " + index);
+					documents.push(item.title);
 
 					index++;
 				}
@@ -189,16 +176,22 @@ export default class SecondBrain extends Plugin {
 			name: "Query Chroma Collection",
 			callback: async () => {
 				const chromaClient = new ChromaClient();
-				const embedder = new OpenAIEmbeddingFunction("sk-")
+				const embedder = new OpenAIEmbeddingFunction("API_KEY");
 				const collection = await chromaClient.getCollection("my_collection", embedder);
 				const results = await collection.query(
 					undefined, // query_embeddings
 					1, // n_results
 					undefined,
 					// { "metadata_field": "is_equal_to_this" }, // where
-					["When have you experienced conflict at work"], // query_text
+					["Is the team close?"], // query_text
 				)
 				console.log(results);
+
+				const file = await this.getSpecificFile(results.documents[0][0]);
+
+				const paragraph = file.content.split(/\n\n+/)[results.metadatas[0][0].paragraph];
+
+				console.log(paragraph);
 			},
 		});
 
@@ -208,7 +201,7 @@ export default class SecondBrain extends Plugin {
 		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
 		// Using this function will automatically remove the event listener when this plugin is disabled.
 		this.registerDomEvent(document, "click", (evt: MouseEvent) => {
-			console.log("click", evt);
+			// console.log("click", evt);
 		});
 
 		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
@@ -252,7 +245,20 @@ export default class SecondBrain extends Plugin {
 		return filesData;
 	};
 
-	async checkModifiedFiles() {
+	async getSpecificFile(title: string): Promise<ObsidianFile> {
+		const files = await this.getCompleteFiles(this.app);
+		let obsidianFile: ObsidianFile;
+
+		files.forEach((file) => {
+			if (file.path.contains(title)) {
+				obsidianFile = new ObsidianFile(file.path, file.content, file.tags, file.timeData)
+			}
+		})
+
+		return obsidianFile;
+	}
+
+	async getFiles(modified: boolean) {
 		// for each file tagged with #second-brain
 		// compare the last updated time against the saved setting updated time
 		// anything more recent, process with ChatGPT
@@ -263,18 +269,17 @@ export default class SecondBrain extends Plugin {
 		files.forEach((file) => {
 			if (
 				file.tags.contains("#second-brain") &&
-				file.timeData.mtime > this.settings.unixLastUpdated
+				(file.timeData.mtime > this.settings.unixLastUpdated || modified)
 			) {
-				// console.log("New data, updating: " + file.path);
 				updatedFiles.push(new ObsidianFile(file.path, file.content, file.tags, file.timeData));
-			} else {
-				// console.log("Removed: " + file.path);
 			}
 		});
 
-		const date = Date.now();
-		this.settings.lastUpdated = new Date(date).toLocaleString();
-		this.settings.unixLastUpdated = date;
+		if (modified) {
+			const date = Date.now();
+			this.settings.lastUpdated = new Date(date).toLocaleString();
+			this.settings.unixLastUpdated = date;
+		}
 
 		return updatedFiles;
 	}
@@ -447,6 +452,33 @@ class SecondBrainSettingsTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.lastUpdated)
 			);
 	}
+}
+
+class SplitObsidianFile {
+
+	title: string;
+	content: string;
+	paragraph: number;
+
+	constructor(title: string, content: string, paragraph: number) {
+		this.title = title;
+		this.content = content;
+		this.paragraph = paragraph;
+	}
+
+
+	public get getTitle(): string {
+		return this.title;
+	}
+
+	public get getContent(): string {
+		return this.content;
+	}
+
+	public get getParagraph(): number {
+		return this.paragraph;
+	}
+
 }
 
 class ObsidianFile {
