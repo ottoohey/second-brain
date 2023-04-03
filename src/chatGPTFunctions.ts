@@ -1,20 +1,14 @@
 import { ChatGPTResponseModal } from "./ChatGPTResponseModal";
 
-interface SecondBrainSettings {
-	lastUpdated: string;
-	unixLastUpdated: number;
-	apiKey: string;
-}
-
 export const queryChatGPT = async (
-	settings: SecondBrainSettings,
+	apiKey: string,
 	paragraph: string,
 	question: string
 ) => {
 	const response = await fetch("https://api.openai.com/v1/chat/completions", {
 		method: "POST",
 		headers: {
-			Authorization: settings.apiKey,
+			Authorization: "Bearer " + apiKey,
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({

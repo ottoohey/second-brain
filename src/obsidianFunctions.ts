@@ -1,12 +1,6 @@
 import { App } from "obsidian";
 import { ObsidianFile } from "./ObsidianFile";
 
-interface SecondBrainSettings {
-	lastUpdated: string;
-	unixLastUpdated: number;
-	apiKey: string;
-}
-
 export const getCompleteFiles = async (app: App) => {
 	const files = app.vault
 		.getFiles()
@@ -23,11 +17,7 @@ export const getCompleteFiles = async (app: App) => {
 	return filesData;
 };
 
-export const getFiles = async (
-	app: App,
-	settings: SecondBrainSettings,
-	modified: boolean
-) => {
+export const getFiles = async (app: App) => {
 	// for each file tagged with #second-brain
 	// compare the last updated time against the saved setting updated time
 	// anything more recent, process with ChatGPT
@@ -52,11 +42,11 @@ export const getFiles = async (
 		}
 	});
 
-	if (modified) {
-		const date = Date.now();
-		settings.lastUpdated = new Date(date).toLocaleString();
-		settings.unixLastUpdated = date;
-	}
+	// if (modified) {
+	// 	const date = Date.now();
+	// 	settings.lastUpdated = new Date(date).toLocaleString();
+	// 	settings.unixLastUpdated = date;
+	// }
 
 	return updatedFiles;
 };

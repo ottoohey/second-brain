@@ -1,21 +1,16 @@
 import { ChromaClient, OpenAIEmbeddingFunction } from "chromadb";
-import { getFiles } from "./obsidianFunctions";
+import { getFiles, getSpecificFiles } from "./obsidianFunctions";
+import { queryChatGPT } from "./chatGPTFunctions";
 
 import { ObsidianFile } from "./ObsidianFile";
 import { SplitObsidianFile } from "./SplitObsidianFile";
 
-interface SecondBrainSettings {
-	lastUpdated: string;
-	unixLastUpdated: number;
-	apiKey: string;
-}
-
 export const loadChromaDB = async (
-	settings: SecondBrainSettings,
+	apiKey: string,
 	chromaCollection: string
 ) => {
 	// Get files that have been modified since last fine tune
-	const files: ObsidianFile[] = await getFiles(app, settings, true);
+	const files: ObsidianFile[] = await getFiles(app);
 
 	const splitContents: SplitObsidianFile[] = [];
 
@@ -38,7 +33,7 @@ export const loadChromaDB = async (
 	const documents = [];
 
 	const chromaClient = new ChromaClient();
-	const embedder = new OpenAIEmbeddingFunction("API_KEY");
+	const embedder = new OpenAIEmbeddingFunction(apiKey);
 
 	let index = 0;
 
@@ -66,4 +61,39 @@ export const loadChromaDB = async (
 		embedder
 	);
 	await collection.add(ids, embeddings, metadata, documents);
+};
+
+export const queryChroma = async (
+	chromaCollection: string,
+	apiKey: string,
+	query: string
+) => {
+	const chromaClient = new ChromaClient();
+	const embedder = new OpenAIEmbeddingFunction(apiKey);
+	const collection = await chromaClient.getCollection(
+		chromaCollection,
+		embedder
+	);
+
+	const questionEmbedding = await embedder.generate([query]);
+
+	const results = await collection.query(
+		questionEmbedding, // query_embeddings
+		2, // n_results
+		undefined, // { "metadata_field": "is_equal_to_this" }, // where
+		[query] // query_text
+	);
+	console.log(results);
+
+	const files = await getSpecificFiles(app, results.documents[0]);
+
+	let finalContent = "";
+
+	files.forEach((file, index) => {
+		const paragraph =
+			file.content.split(/\n\n+/)[results.metadatas[0][index].paragraph];
+		finalContent += " " + paragraph;
+	});
+
+	queryChatGPT(apiKey, finalContent, query);
 };

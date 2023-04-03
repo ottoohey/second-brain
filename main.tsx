@@ -8,11 +8,10 @@ import {
 
 import { ChromaClient, OpenAIEmbeddingFunction } from 'chromadb';
 
-import { getSpecificFiles } from "./src/obsidianFunctions";
-import { queryChatGPT } from "./src/chatGPTFunctions";
 import { loadChromaDB } from "./src/chromaFunctions";
 
 import { ApiKeyModal } from "./src/ApiKeyModal";
+import { QueryModal } from "src/QueryModal";
 
 interface SecondBrainSettings {
 	lastUpdated: string;
@@ -44,7 +43,7 @@ export default class SecondBrain extends Plugin {
 				await chromaClient.reset();
 				await chromaClient.createCollection(CHROMA_COLLECTION, {}, embedder);
 
-				loadChromaDB(this.settings, CHROMA_COLLECTION);
+				loadChromaDB(this.settings.apiKey, CHROMA_COLLECTION);
 
 				new Notice("ChromaDB Functionality");
 			}
@@ -71,34 +70,8 @@ export default class SecondBrain extends Plugin {
 			id: "open-modal-query-chroma-collection",
 			name: "Query Chroma Collection",
 			callback: async () => {
-				const chromaClient = new ChromaClient();
-				const embedder = new OpenAIEmbeddingFunction("API_KEY");
-				const collection = await chromaClient.getCollection(CHROMA_COLLECTION, embedder);
-				const question = "How fast is technology developing with AI?"
-
-				const questionEmbedding = await embedder.generate([question]);
-
-				const results = await collection.query(
-					questionEmbedding, // query_embeddings
-					2, // n_results
-					undefined, // { "metadata_field": "is_equal_to_this" }, // where
-					[question], // query_text
-				)
-				console.log(results);
-
-				const files = await getSpecificFiles(this.app, results.documents[0]);
-
-				let finalContent = "";
-
-				files.forEach((file, index) => {
-					const paragraph = file.content.split(/\n\n+/)[results.metadatas[0][index].paragraph];
-					finalContent += " " + paragraph;
-				})
-
-				console.log(finalContent);
-
-				queryChatGPT(this.settings, finalContent, question)
-			},
+				new QueryModal(this.app, this.settings.apiKey, CHROMA_COLLECTION).open();
+			}
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
